@@ -1,0 +1,7 @@
+{
+  "swift.testEnvironmentVariables": {
+    "MOTISIG_SDK_KEY": "${env:MOTISIG_SDK_KEY}",
+    "MOTISIG_PROJECT_ID": "${env:MOTISIG_PROJECT_ID}",
+    "MOTISIG_BASE_URL": "${env:MOTISIG_BASE_URL}"
+  }
+}

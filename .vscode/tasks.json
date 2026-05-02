@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "swift",
+      "label": "Swift: Unit tests (MotiSigTests)",
+      "detail": "swift test --filter MotiSigTests",
+      "args": ["test", "--filter", "MotiSigTests"],
+      "cwd": "${workspaceFolder}",
+      "group": "test",
+      "env": {
+        "MOTISIG_SDK_KEY": "${env:MOTISIG_SDK_KEY}",
+        "MOTISIG_PROJECT_ID": "${env:MOTISIG_PROJECT_ID}",
+        "MOTISIG_BASE_URL": "${env:MOTISIG_BASE_URL}"
+      }
+    },
+    {
+      "type": "swift",
+      "label": "Swift: Integration tests (MotiSigIntegrationTests)",
+      "detail": "swift test --filter MotiSigIntegrationTests",
+      "args": ["test", "--filter", "MotiSigIntegrationTests"],
+      "cwd": "${workspaceFolder}",
+      "group": "test",
+      "env": {
+        "MOTISIG_SDK_KEY": "${env:MOTISIG_SDK_KEY}",
+        "MOTISIG_PROJECT_ID": "${env:MOTISIG_PROJECT_ID}",
+        "MOTISIG_BASE_URL": "${env:MOTISIG_BASE_URL}"
+      }
+    },
+    {
+      "type": "swift",
+      "label": "swift: Build tests (debug)",
+      "detail": "swift build --build-tests",
+      "args": ["build", "--build-tests"],
+      "cwd": "${workspaceFolder}",
+      "group": "build"
+    }
+  ]
+}

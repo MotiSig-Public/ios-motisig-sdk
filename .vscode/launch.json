@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "name": "Swift: Debug XCTest (MotiSigTests)",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/.build/arm64-apple-macosx/debug/MotiSigPackageTests.xctest/Contents/MacOS/MotiSigPackageTests",
+      "preLaunchTask": "swift: Build tests (debug)",
+      "args": ["-XCTest", "MotiSigTests"],
+      "testType": "XCTest",
+      "env": {
+        "MOTISIG_SDK_KEY": "${env:MOTISIG_SDK_KEY}",
+        "MOTISIG_PROJECT_ID": "${env:MOTISIG_PROJECT_ID}",
+        "MOTISIG_BASE_URL": "${env:MOTISIG_BASE_URL}"
+      }
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "name": "Swift: Debug XCTest (MotiSigIntegrationTests)",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/.build/arm64-apple-macosx/debug/MotiSigPackageTests.xctest/Contents/MacOS/MotiSigPackageTests",
+      "preLaunchTask": "swift: Build tests (debug)",
+      "args": ["-XCTest", "MotiSigIntegrationTests"],
+      "testType": "XCTest",
+      "env": {
+        "MOTISIG_SDK_KEY": "${env:MOTISIG_SDK_KEY}",
+        "MOTISIG_PROJECT_ID": "${env:MOTISIG_PROJECT_ID}",
+        "MOTISIG_BASE_URL": "${env:MOTISIG_BASE_URL}"
+      }
+    }
+  ]
+}
