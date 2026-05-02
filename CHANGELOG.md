@@ -8,6 +8,8 @@ when version tags are published.
 
 ## [Unreleased]
 
-- Documentation: README, client guides under `docs/`, and open-source community files (license, security, contributing, code of conduct).
+## [1.0.0] - 2026-05-01
 
-When you start tagging releases, add sections such as `## [1.0.0] - YYYY-MM-DD` with bullet summaries of user-visible changes.
+First **semver Git tag** for Swift Package Manager consumption (`1.0.0`).
+
+- Documentation: README (SPM install, versioning, Swift Package Index), client guides under `docs/`, and open-source community files (license, security, contributing, code of conduct).
