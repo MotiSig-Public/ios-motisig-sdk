@@ -3,7 +3,7 @@ import Foundation
 /// Serializes async mutation work in FIFO order (one in-flight item at a time).
 final class FIFOAsyncMutationQueue: @unchecked Sendable {
 
-    private let gate = DispatchQueue(label: "com.motisig.sdk.mutation-queue")
+    private let gate = DispatchQueue(label: "ai.motisig.sdk.mutation-queue")
     private var pending: [() async -> Void] = []
     private var isDraining = false
 

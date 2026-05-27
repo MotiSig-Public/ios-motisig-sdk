@@ -2,7 +2,7 @@ import Foundation
 
 /// In-memory FIFO buffer for notification events when no listeners are registered.
 final class EventBuffer {
-    private let syncQueue = DispatchQueue(label: "com.motisig.sdk.eventBuffer")
+    private let syncQueue = DispatchQueue(label: "ai.motisig.sdk.eventBuffer")
     private var events: [(MotiSigNotification, Bool)] = []
     private let maxEvents: Int
 

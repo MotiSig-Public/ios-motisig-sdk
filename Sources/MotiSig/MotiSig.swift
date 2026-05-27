@@ -32,12 +32,13 @@ public final class MotiSig {
     private var httpClient: HTTPClient?
     private let pushManager = PushNotificationManager()
     private let storage = Storage()
-    private let syncQueue = DispatchQueue(label: "com.motisig.sdk.sync")
+    private let syncQueue = DispatchQueue(label: "ai.motisig.sdk.sync")
     private let mutationQueue = FIFOAsyncMutationQueue()
+    private var clickDispatcher: ClickDispatcher?
     private let eventBuffer = EventBuffer()
     private var listenerEntries: [UUID: ListenerBox] = [:]
     private var nextRegistrationSequence: UInt64 = 0
-    private let listenerQueue = DispatchQueue(label: "com.motisig.sdk.listeners")
+    private let listenerQueue = DispatchQueue(label: "ai.motisig.sdk.listeners")
 
     /// Last `permission` / `enabled` successfully sent on push-subscription requests (used to avoid redundant PATCHes).
     private var lastSyncedPushPermission: String?
@@ -54,6 +55,9 @@ public final class MotiSig {
     private var foregroundRequestSet = Set<String>()
     private static let maxForegroundRequestIds = 10
 
+    private let coldStartDeliveryLock = NSLock()
+    private var coldStartDeliveredKeys = Set<String>()
+
     private init() {}
 
     // MARK: - Initialization
@@ -68,7 +72,33 @@ public final class MotiSig {
     ///   - pingIntervalSeconds: Foreground heartbeat ping interval in seconds (default **60**; invalid or non-positive values use **60**, max **86400**).
     ///   - skipPermissionRequest: When `true`, does not show the system notification permission prompt; still registers for remote notifications (Expo parity).
     ///   - skipNotificationListeners: When `true`, does not install the `UNUserNotificationCenter` delegate proxy (no MotiSig notification callbacks or automatic click tracking from pushes).
+    ///   - launchOptions: Pass `launchOptions` from `application(_:didFinishLaunchingWithOptions:)` (SwiftUI: use `@UIApplicationDelegateAdaptor`). When `launchOptions[.remoteNotification]` is set (UIKit cold start from a push tap), the SDK delivers that payload during `initialize()`; scene-based SwiftUI apps may also receive the tap via the notification-center delegate.
     /// - Returns: `false` if `sdkKey` or `projectId` could not be resolved; otherwise `true`. Subsequent calls return `true` immediately if already initialized.
+    #if canImport(UIKit) && !os(watchOS)
+    @discardableResult
+    public static func initialize(
+        sdkKey: String = "",
+        projectId: String = "",
+        baseURL: URL? = nil,
+        logLevel: LogLevel = .error,
+        pingIntervalSeconds: Int = 60,
+        skipPermissionRequest: Bool = false,
+        skipNotificationListeners: Bool = false,
+        launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        let launchRemoteNotification = launchOptions?[.remoteNotification] as? [AnyHashable: Any]
+        return initializeImpl(
+            sdkKey: sdkKey,
+            projectId: projectId,
+            baseURL: baseURL,
+            logLevel: logLevel,
+            pingIntervalSeconds: pingIntervalSeconds,
+            skipPermissionRequest: skipPermissionRequest,
+            skipNotificationListeners: skipNotificationListeners,
+            launchRemoteNotification: launchRemoteNotification
+        )
+    }
+    #else
     @discardableResult
     public static func initialize(
         sdkKey: String = "",
@@ -78,6 +108,30 @@ public final class MotiSig {
         pingIntervalSeconds: Int = 60,
         skipPermissionRequest: Bool = false,
         skipNotificationListeners: Bool = false
+    ) -> Bool {
+        return initializeImpl(
+            sdkKey: sdkKey,
+            projectId: projectId,
+            baseURL: baseURL,
+            logLevel: logLevel,
+            pingIntervalSeconds: pingIntervalSeconds,
+            skipPermissionRequest: skipPermissionRequest,
+            skipNotificationListeners: skipNotificationListeners,
+            launchRemoteNotification: nil
+        )
+    }
+    #endif
+
+    @discardableResult
+    private static func initializeImpl(
+        sdkKey: String,
+        projectId: String,
+        baseURL: URL?,
+        logLevel: LogLevel,
+        pingIntervalSeconds: Int,
+        skipPermissionRequest: Bool,
+        skipNotificationListeners: Bool,
+        launchRemoteNotification: [AnyHashable: Any]?
     ) -> Bool {
         let already = shared.syncQueue.sync { shared.configuration != nil }
         if already {
@@ -131,15 +185,35 @@ public final class MotiSig {
             shared.skipNotificationListenersStored = skipNotificationListeners
             shared.configuration = config
             shared.httpClient = HTTPClient(configuration: config)
+            shared.clickDispatcher = ClickDispatcher(
+                httpClientProvider: { [weak shared] in shared?.client },
+                userIdProvider: { [weak shared] in shared?.currentUserId }
+            )
+            shared.clickDispatcher?.start()
         }
 
         if !MotiSigTestBootstrap.skipPushPermissionAndRegistration {
-            DispatchQueue.main.async {
-                if !shared.syncQueue.sync(execute: { shared.skipNotificationListenersStored }) {
+            if !shared.syncQueue.sync(execute: { shared.skipNotificationListenersStored }) {
+                if Thread.isMainThread {
                     NotificationCenterProxy.shared.install()
+                } else {
+                    DispatchQueue.main.sync {
+                        NotificationCenterProxy.shared.install()
+                    }
                 }
-                AppDelegateSwizzler.install()
             }
+            if Thread.isMainThread {
+                AppDelegateSwizzler.install()
+            } else {
+                DispatchQueue.main.sync {
+                    AppDelegateSwizzler.install()
+                }
+            }
+        }
+
+        if !shared.syncQueue.sync(execute: { shared.skipNotificationListenersStored }),
+           let launchRemoteNotification {
+            shared.deliverColdStartLaunchPayload(userInfo: launchRemoteNotification)
         }
 
         if !shared.syncQueue.sync(execute: { shared.skipNotificationListenersStored }) {
@@ -183,6 +257,9 @@ public final class MotiSig {
         foregroundRequestOrder.removeAll(keepingCapacity: false)
         foregroundRequestSet.removeAll(keepingCapacity: false)
         foregroundRequestLock.unlock()
+        coldStartDeliveryLock.lock()
+        coldStartDeliveredKeys.removeAll(keepingCapacity: false)
+        coldStartDeliveryLock.unlock()
         syncQueue.sync {
             storage.clear()
             lastSyncedPushPermission = nil
@@ -193,6 +270,8 @@ public final class MotiSig {
             skipNotificationListenersStored = false
         }
         onApnsTokenChange = nil
+        clickDispatcher?.dispose()
+        clickDispatcher = nil
         Logger.shared.info("MotiSig reset (local only; no server logout)")
     }
 
@@ -216,6 +295,9 @@ public final class MotiSig {
                 return
             }
             Logger.shared.info("setUser started for id: \(id)")
+            self.syncQueue.sync { self.storage.userId = id }
+            self.clickDispatcher?.onUserSet(userId: id)
+            self.autoRegisterTokenIfNeeded()
             do {
                 let body = RegisterUserBody(
                     id: id,
@@ -238,11 +320,14 @@ public final class MotiSig {
                     }
                 }
 
-                self.syncQueue.sync { self.storage.userId = id }
                 Logger.shared.info("setUser completed; user id persisted: \(id)")
-                self.autoRegisterTokenIfNeeded()
                 Self.invokeCompletion(completion, .success(()))
             } catch {
+                self.syncQueue.sync {
+                    if self.storage.userId == id {
+                        self.storage.userId = nil
+                    }
+                }
                 if let err = error as? MotiSigError {
                     Logger.shared.error("setUser failed: \(err.errorDescription ?? String(describing: err))")
                 } else {
@@ -267,26 +352,18 @@ public final class MotiSig {
         isForeground: Bool? = nil,
         completion: ((Result<Void, Error>) -> Void)? = nil
     ) {
-        let userIdForTask = syncQueue.sync { storage.userId }
-        guard let userIdForTask else {
-            Self.invokeCompletion(completion, .failure(MotiSigError.userNotSet))
+        guard client != nil else {
+            Self.invokeCompletion(completion, .failure(MotiSigError.notInitialized))
             return
         }
-        mutationQueue.enqueue { [weak self] in
-            guard let self, let client = self.client else {
-                Self.invokeCompletion(completion, .failure(MotiSigError.notInitialized))
-                return
-            }
-            let body = TrackClickBody(userId: userIdForTask, messageId: messageId, isForeground: isForeground)
-            do {
-                try await client.request(.trackClick, body: body)
-                Logger.shared.debug("trackClick sent for message \(messageId)")
-                Self.invokeCompletion(completion, .success(()))
-            } catch {
-                Logger.shared.error("trackClick failed: \(error)")
-                Self.invokeCompletion(completion, .failure(error))
-            }
-        }
+        let userId = syncQueue.sync { storage.userId }
+        clickDispatcher?.enqueueClick(
+            messageId: messageId,
+            isForeground: isForeground,
+            userId: userId
+        )
+        Logger.shared.debug("trackClick enqueued for message \(messageId)")
+        Self.invokeCompletion(completion, .success(()))
     }
 
     /// Update mutable user fields.
@@ -347,6 +424,7 @@ public final class MotiSig {
             self.listenerEntries.removeAll(keepingCapacity: false)
             self.eventBuffer.clear()
         }
+        clickDispatcher?.clearAll()
         syncQueue.sync {
             storage.clear()
             lastSyncedPushPermission = nil
@@ -685,6 +763,9 @@ public final class MotiSig {
     func deliverWillPresent(notification: UNNotification) {
         guard !syncQueue.sync(execute: { skipNotificationListenersStored }) else { return }
         let userInfo = notification.request.content.userInfo
+        Logger.shared.debug(
+            "deliverWillPresent userInfo keys: \(userInfo.keys.compactMap { $0 as? String }.sorted())"
+        )
         if PushNotificationManager.shouldSuppressForeground(from: userInfo) {
             return
         }
@@ -695,11 +776,51 @@ public final class MotiSig {
         dispatchToListenersOrBuffer(event, inForeground: true)
     }
 
+    /// Cold start from a scene connection (`UIScene.ConnectionOptions.notificationResponse`).
+    func deliverSceneConnectionResponse(_ response: UNNotificationResponse) {
+        guard !syncQueue.sync(execute: { skipNotificationListenersStored }) else { return }
+        Logger.shared.debug(
+            "deliverSceneConnectionResponse ENTRY reqId=\(response.notification.request.identifier)"
+        )
+        performSceneConnectionDelivery(response)
+    }
+
+    private func performSceneConnectionDelivery(_ response: UNNotificationResponse) {
+        let userInfo = response.notification.request.content.userInfo
+        markColdStartDelivered(userInfo: userInfo)
+        trackClickIfPossible(userInfo: userInfo, isForeground: false)
+        let event = PushNotificationManager.motiSigNotification(from: response.notification, wasForeground: false)
+        dispatchToListenersOrBuffer(event, inForeground: false)
+    }
+
+    /// Cold start from a push tap (`launchOptions[.remoteNotification]`), consumed during ``initialize()``.
+    private func deliverColdStartLaunchPayload(userInfo: [AnyHashable: Any]) {
+        guard !syncQueue.sync(execute: { skipNotificationListenersStored }) else { return }
+        Logger.shared.debug("Delivering cold-start launch notification payload.")
+        Logger.shared.debug(
+            "deliverColdStartLaunchPayload userInfo keys: \(userInfo.keys.compactMap { $0 as? String }.sorted())"
+        )
+        markColdStartDelivered(userInfo: userInfo)
+        trackClickIfPossible(userInfo: userInfo, isForeground: false)
+        let event = PushNotificationManager.motiSigNotification(from: userInfo, wasForeground: false)
+        dispatchToListenersOrBuffer(event, inForeground: false)
+    }
+
     /// User opened a notification (`didReceive`).
     func deliverDidOpen(response: UNNotificationResponse) {
         guard !syncQueue.sync(execute: { skipNotificationListenersStored }) else { return }
+        Logger.shared.debug(
+            "deliverDidOpen ENTRY reqId=\(response.notification.request.identifier) action=\(response.actionIdentifier)"
+        )
         let notification = response.notification
         let userInfo = notification.request.content.userInfo
+        if consumeColdStartDelivered(userInfo: userInfo) {
+            Logger.shared.debug("deliverDidOpen skipped; already handled via cold-start launch payload.")
+            return
+        }
+        Logger.shared.debug(
+            "deliverDidOpen userInfo keys: \(userInfo.keys.compactMap { $0 as? String }.sorted())"
+        )
         let requestId = notification.request.identifier
         let wasFg = takeWasForeground(forRequestIdentifier: requestId)
         let event = PushNotificationManager.motiSigNotification(from: notification, wasForeground: wasFg)
@@ -722,6 +843,21 @@ public final class MotiSig {
             let removed = foregroundRequestOrder.removeFirst()
             foregroundRequestSet.remove(removed)
         }
+    }
+
+    private func markColdStartDelivered(userInfo: [AnyHashable: Any]) {
+        let key = PushNotificationManager.notificationCorrelationKey(from: userInfo)
+        coldStartDeliveryLock.lock()
+        coldStartDeliveredKeys.insert(key)
+        coldStartDeliveryLock.unlock()
+    }
+
+    private func consumeColdStartDelivered(userInfo: [AnyHashable: Any]) -> Bool {
+        let key = PushNotificationManager.notificationCorrelationKey(from: userInfo)
+        coldStartDeliveryLock.lock()
+        let consumed = coldStartDeliveredKeys.remove(key) != nil
+        coldStartDeliveryLock.unlock()
+        return consumed
     }
 
     private func takeWasForeground(forRequestIdentifier requestIdentifier: String) -> Bool {
@@ -840,25 +976,27 @@ public final class MotiSig {
     }
 
     private func trackClickIfPossible(userInfo: [AnyHashable: Any], isForeground: Bool) {
-        guard let messageId = PushNotificationManager.extractMessageId(from: userInfo) else {
+        let resolvedMessageId = PushNotificationManager.extractMessageId(from: userInfo)
+        Logger.shared.debug(
+            "trackClickIfPossible ENTRY messageId=\(resolvedMessageId ?? "nil") isForeground=\(isForeground)"
+        )
+        guard let messageId = resolvedMessageId else {
             Logger.shared.debug("No messageId in payload; skipping click tracking.")
             return
         }
-        guard let userId = currentUserId else {
-            Logger.shared.debug("No user set; skipping click tracking.")
+        let trimmed = messageId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        guard let dispatcher = clickDispatcher else {
+            Logger.shared.debug("Click skipped (SDK not initialized) for message \(trimmed)")
             return
         }
-
-        let body = TrackClickBody(userId: userId, messageId: messageId, isForeground: isForeground)
-        Task { [weak self] in
-            guard let client = self?.client else { return }
-            do {
-                try await client.request(.trackClick, body: body)
-                Logger.shared.debug("Click tracked for message \(messageId)")
-            } catch {
-                Logger.shared.error("Failed to track click: \(error)")
-            }
-        }
+        dispatcher.enqueueClick(
+            messageId: trimmed,
+            isForeground: isForeground,
+            userId: currentUserId
+        )
+        Logger.shared.debug("trackClick enqueued for message \(trimmed)")
     }
 
     private func dispatchToListenersOrBuffer(_ notification: MotiSigNotification, inForeground: Bool) {

@@ -4,14 +4,14 @@ final class Storage {
     private let defaults: UserDefaults
 
     private enum Key {
-        static let userId = "com.motisig.sdk.userId"
-        static let apnsToken = "com.motisig.sdk.apnsToken"
+        static let userId = "ai.motisig.sdk.userId"
+        static let apnsToken = "ai.motisig.sdk.apnsToken"
         /// Customer preference: receive pushes for this device when `true` (default if unset).
-        static let pushSubscriptionCustomerEnabled = "com.motisig.sdk.pushSubscriptionCustomerEnabled"
+        static let pushSubscriptionCustomerEnabled = "ai.motisig.sdk.pushSubscriptionCustomerEnabled"
     }
 
     init() {
-        self.defaults = UserDefaults(suiteName: "com.motisig.sdk") ?? .standard
+        self.defaults = UserDefaults(suiteName: "ai.motisig.sdk") ?? .standard
     }
 
     var userId: String? {

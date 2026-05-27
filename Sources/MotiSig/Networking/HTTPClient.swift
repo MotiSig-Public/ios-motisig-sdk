@@ -1,6 +1,9 @@
 import Foundation
 
 final class HTTPClient {
+    private static let defaultRequestTimeout: TimeInterval = 30
+    private static let defaultResourceTimeout: TimeInterval = 60
+
     private let session: URLSession
     private let configuration: Configuration
     private let encoder: JSONEncoder = {
@@ -10,9 +13,16 @@ final class HTTPClient {
     }()
     private let decoder = JSONDecoder()
 
-    init(configuration: Configuration, session: URLSession = .shared) {
+    init(configuration: Configuration, session: URLSession? = nil) {
         self.configuration = configuration
-        self.session = session
+        self.session = session ?? Self.makeDefaultSession()
+    }
+
+    private static func makeDefaultSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = defaultRequestTimeout
+        config.timeoutIntervalForResource = defaultResourceTimeout
+        return URLSession(configuration: config)
     }
 
     // MARK: - Typed response, with body

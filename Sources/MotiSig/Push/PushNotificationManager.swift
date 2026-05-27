@@ -69,6 +69,29 @@ final class PushNotificationManager {
         userInfo["messageId"] as? String
             ?? (userInfo["aps"] as? [String: Any])?["messageId"] as? String
             ?? userInfo["message_id"] as? String
+            ?? (userInfo["_motisig"] as? [String: Any])?["messageId"] as? String
+    }
+
+    /// Stable key for deduplicating cold-start delivery (`launchOptions` + `didReceive` for the same tap).
+    static func notificationCorrelationKey(from userInfo: [AnyHashable: Any]) -> String {
+        if let messageId = extractMessageId(from: userInfo)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !messageId.isEmpty {
+            return "m:\(messageId)"
+        }
+        var parts: [String] = []
+        if let aps = userInfo["aps"] as? [String: Any] {
+            if let alert = aps["alert"] as? [String: Any] {
+                parts.append(alert["title"] as? String ?? "")
+                parts.append(alert["body"] as? String ?? "")
+            } else if let alert = aps["alert"] as? String {
+                parts.append(alert)
+            }
+        }
+        for key in userInfo.keys.compactMap({ $0 as? String }).sorted() where key != "aps" {
+            parts.append("\(key)=\(String(describing: userInfo[key]!))")
+        }
+        return "h:\(parts.joined(separator: "\u{0000}").hashValue)"
     }
 
     /// Expo `data.suppressForeground === true`: skip foreground listener and foreground click tracking.
@@ -85,12 +108,52 @@ final class PushNotificationManager {
         let content = notification.request.content
         let userInfo = content.userInfo
         let rid = notification.request.identifier
-        return MotiSigNotification(
-            messageId: extractMessageId(from: userInfo),
+        return motiSigNotification(
+            from: userInfo,
             title: content.title.isEmpty ? nil : content.title,
             body: content.body.isEmpty ? nil : content.body,
-            userInfo: userInfo,
             requestIdentifier: rid.isEmpty ? nil : rid,
+            wasForeground: wasForeground
+        )
+    }
+
+    /// Builds a notification from a raw APNs `userInfo` (e.g. cold-start `launchOptions[.remoteNotification]`).
+    static func motiSigNotification(
+        from userInfo: [AnyHashable: Any],
+        wasForeground: Bool = false
+    ) -> MotiSigNotification {
+        var title: String?
+        var body: String?
+        if let aps = userInfo["aps"] as? [String: Any] {
+            if let alert = aps["alert"] as? [String: Any] {
+                title = alert["title"] as? String
+                body = alert["body"] as? String
+            } else if let alert = aps["alert"] as? String {
+                body = alert
+            }
+        }
+        return motiSigNotification(
+            from: userInfo,
+            title: title,
+            body: body,
+            requestIdentifier: nil,
+            wasForeground: wasForeground
+        )
+    }
+
+    private static func motiSigNotification(
+        from userInfo: [AnyHashable: Any],
+        title: String?,
+        body: String?,
+        requestIdentifier: String?,
+        wasForeground: Bool
+    ) -> MotiSigNotification {
+        MotiSigNotification(
+            messageId: extractMessageId(from: userInfo),
+            title: title,
+            body: body,
+            userInfo: userInfo,
+            requestIdentifier: requestIdentifier,
             wasForeground: wasForeground
         )
     }

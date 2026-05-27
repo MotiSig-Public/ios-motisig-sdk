@@ -54,20 +54,70 @@ To list this package on [Swift Package Index](https://swiftpackageindex.com/) fo
 
 ## Quick start
 
+### SwiftUI
+
+Initialize in `application(_:didFinishLaunchingWithOptions:)` and pass `launchOptions`. Use `@UIApplicationDelegateAdaptor` so SwiftUI apps receive `didFinishLaunching` before scene setup.
+
 ```swift
+import SwiftUI
 import MotiSig
 
-// Call once at launch (e.g. AppDelegate or @main App)
-MotiSig.initialize(
-    sdkKey: "YOUR_SDK_KEY",
-    projectId: "YOUR_PROJECT_ID",
-    baseURL: nil,
-    logLevel: .info
-)
+@main
+struct YourApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        MotiSig.initialize(
+            sdkKey: "YOUR_SDK_KEY",
+            projectId: "YOUR_PROJECT_ID",
+            logLevel: .info,
+            launchOptions: launchOptions
+        )
+        return true
+    }
+}
+
+// After sign-in (anywhere appropriate, e.g. after auth completes)
+MotiSig.shared.setUser(id: userId)
+```
+
+Call `MotiSig.initialize(...)` in `application(_:didFinishLaunchingWithOptions:)` — this installs the notification delegate proxy and AppDelegate swizzles before iOS can deliver a cold-start tap. Deferred initialization (e.g. after async auth) is not supported for push click tracking.
+
+### UIKit (AppDelegate)
+
+```swift
+import UIKit
+import MotiSig
+
+func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+) -> Bool {
+    MotiSig.initialize(
+        sdkKey: "YOUR_SDK_KEY",
+        projectId: "YOUR_PROJECT_ID",
+        logLevel: .info,
+        launchOptions: launchOptions
+    )
+    return true
+}
 
 // After sign-in
 MotiSig.shared.setUser(id: userId)
+```
 
+```swift
 MotiSig.shared.addTags(["premium"])
 
 MotiSig.shared.triggerEvent(eventName: "screen_view", data: ["screen": "home"]) { result in

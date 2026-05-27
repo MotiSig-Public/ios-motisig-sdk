@@ -6,13 +6,14 @@ final class Logger {
 
     var level: LogLevel = .error
 
-    private let osLog = OSLog(subsystem: "com.motisig.sdk", category: "MotiSig")
+    private let osLog = OSLog(subsystem: "ai.motisig.sdk", category: "MotiSig")
 
     private init() {}
 
     private func emit(_ tag: String, _ message: String) {
+        let line = "[MotiSig/\(tag)] \(message)"
         if MotiSigTestBootstrap.skipPushPermissionAndRegistration {
-            print("[MotiSig/\(tag)] \(message)")
+            print(line)
         }
     }
 
