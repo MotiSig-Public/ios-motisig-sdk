@@ -12,7 +12,6 @@ private func motisigPathEncode(_ segment: String) -> String {
 
 enum Endpoint {
     case registerUser
-    case getUser(userId: String)
     case updateUser(userId: String)
     case addTags(userId: String)
     case removeTags(userId: String)
@@ -29,8 +28,6 @@ enum Endpoint {
         switch self {
         case .registerUser:
             return "/users"
-        case .getUser(let id):
-            return "/users/\(motisigPathEncode(id))"
         case .updateUser(let id):
             return "/users/\(motisigPathEncode(id))"
         case .addTags(let id):
@@ -54,8 +51,6 @@ enum Endpoint {
 
     var method: HTTPMethod {
         switch self {
-        case .getUser:
-            return .GET
         case .updateUser, .patchPushSubscription:
             return .PATCH
         case .removeTags, .removeAttributes, .removePushSubscription:

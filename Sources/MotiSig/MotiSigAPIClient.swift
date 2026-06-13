@@ -21,10 +21,6 @@ public final class MotiSigAPIClient: @unchecked Sendable {
         self.http = HTTPClient(configuration: configuration)
     }
 
-    public func getUser(userId: String) async throws -> MotiSigUser? {
-        try await http.getUser(userId: userId)
-    }
-
     public func trackClick(userId: String, messageId: String, isForeground: Bool? = nil) async throws {
         let body = TrackClickBody(userId: userId, messageId: messageId, isForeground: isForeground)
         try await http.request(.trackClick, body: body)

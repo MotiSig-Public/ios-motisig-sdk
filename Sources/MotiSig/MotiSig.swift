@@ -338,14 +338,6 @@ public final class MotiSig {
         }
     }
 
-    /// Fetches the current user from the server (`GET /users/{id}`). Returns `nil` when the user is not found (**404**).
-    public func getUser() async throws -> MotiSigUser? {
-        guard let client = client else { throw MotiSigError.notInitialized }
-        let userId = syncQueue.sync { storage.userId }
-        guard let userId else { throw MotiSigError.userNotSet }
-        return try await client.getUser(userId: userId)
-    }
-
     /// Records a notification open or in-app action (`POST /track/click`).
     public func trackClick(
         messageId: String,

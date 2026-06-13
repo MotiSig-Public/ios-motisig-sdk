@@ -69,19 +69,6 @@ final class HTTPClient {
         }
     }
 
-    /// `GET /users/{id}` — returns `nil` when the server responds **404** (Expo `getUser` parity).
-    func getUser(userId: String) async throws -> MotiSigUser? {
-        let data = try await sendAllowing404(.getUser(userId: userId), body: nil)
-        guard let data, !data.isEmpty else { return nil }
-        do {
-            let decoded = try decoder.decode(UserResponse.self, from: data)
-            guard let user = decoded.user else { return nil }
-            return MotiSigUser(jsonValue: user)
-        } catch {
-            throw MotiSigError.decodingError(error)
-        }
-    }
-
     /// `POST /users/{id}/ping` with one retry after **1.5s** on transport failure (Expo `ping` parity).
     func requestPingWithNetworkRetry(userId: String) async throws {
         do {
@@ -136,43 +123,6 @@ final class HTTPClient {
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MotiSigError.networkError(URLError(.badServerResponse))
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMessage = (try? decoder.decode(ErrorResponseBody.self, from: data))?.error
-            throw MotiSigError.apiError(
-                statusCode: httpResponse.statusCode,
-                message: errorMessage
-            )
-        }
-
-        return data
-    }
-
-    private func sendAllowing404(_ endpoint: Endpoint, body: Data?) async throws -> Data? {
-        let urlRequest = endpoint.urlRequest(
-            baseURL: configuration.baseURL,
-            sdkKey: configuration.sdkKey,
-            projectId: configuration.projectId,
-            body: body
-        )
-
-        Logger.shared.debug("[\(endpoint.method.rawValue)] \(urlRequest.url?.absoluteString ?? "")")
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: urlRequest)
-        } catch {
-            throw MotiSigError.networkError(error)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MotiSigError.networkError(URLError(.badServerResponse))
-        }
-
-        if httpResponse.statusCode == 404 {
-            return nil
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
