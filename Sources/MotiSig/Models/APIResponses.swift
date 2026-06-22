@@ -3,6 +3,8 @@ import Foundation
 struct RegisterUserResponse: Decodable {
     let success: Bool
     let userId: String
+    let anonymousId: String?
+    let signup: Bool?
 }
 
 struct SuccessResponse: Decodable {

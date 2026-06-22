@@ -37,6 +37,10 @@ export MOTISIG_BASE_URL="https://…"
 swift test --filter MotiSigIntegrationTests
 ```
 
+## Releasing
+
+Maintainers: see **[RELEASING.md](RELEASING.md)** for the full release checklist and `scripts/release.sh` helper. SPM releases are annotated Git tags — no publish credentials required.
+
 ## Documentation
 
 User-facing guides live under [docs/](docs/). When you change public API or runtime behavior, update the relevant doc and the [README](README.md) if install or quick-start instructions are affected.
