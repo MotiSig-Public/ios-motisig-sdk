@@ -17,7 +17,7 @@ Use a recent Xcode that supports Swift 6 when developing or consuming this packa
 
 ## Installation (SPM)
 
-Published versions are **Git tags** on this repository ([Semantic Versioning](https://semver.org/)). Pick a rule that matches how tightly you want to track releases: `from: "1.0.1"` (minimum version), `.upToNextMajor(from: "1.0.1")`, or `exact: "1.0.1"` for a fixed pin. Release notes: [CHANGELOG.md](CHANGELOG.md).
+Published versions are **Git tags** on this repository ([Semantic Versioning](https://semver.org/)). Pick a rule that matches how tightly you want to track releases: `from: "1.0.2"` (minimum version), `.upToNextMajor(from: "1.0.2")`, or `exact: "1.0.2"` for a fixed pin. Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ### Xcode (app or framework)
 
@@ -25,14 +25,14 @@ Published versions are **Git tags** on this repository ([Semantic Versioning](ht
 
 `https://github.com/MotiSig-Public/ios-motisig-sdk.git`
 
-Choose a version rule (e.g. **Up to Next Major** from `1.0.1`). Add the **MotiSig** product to the targets that need it.
+Choose a version rule (e.g. **Up to Next Major** from `1.0.2`). Add the **MotiSig** product to the targets that need it.
 
 ### Another `Package.swift`
 
 Add the package URL, then depend on the **MotiSig** product (the SwiftPM package name is the repository name, `ios-motisig-sdk`):
 
 ```swift
-.package(url: "https://github.com/MotiSig-Public/ios-motisig-sdk.git", from: "1.0.1")
+.package(url: "https://github.com/MotiSig-Public/ios-motisig-sdk.git", from: "1.0.2")
 ```
 
 ```swift
